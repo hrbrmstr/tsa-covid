@@ -1,0 +1,136 @@
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <title>{Plot} Demo</title>
+  <meta name="description" content="Small example of {Plot} and {arquero} outside of Observable.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta property="og:title" content="{Plot} Demo">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://rud.is/vis/tsa-covid/">
+  <meta property="og:image" content="https://rud.is/vis/tsa-covid/snap.png">
+
+  <!-- Place favicon.ico in the root directory -->
+
+  <link rel="stylesheet" href="css/normalize.css">
+  <link rel="stylesheet" href="css/main.css">
+
+  <style>
+    @font-face {
+      font-family: system;
+      font-style: normal;
+      font-weight: 300;
+      src: local(".SFNSText-Light"), local(".HelveticaNeueDeskInterface-Light"), local(".LucidaGrandeUI"), local("Ubuntu Light"), local("Segoe UI Light"), local("Roboto-Light"), local("DroidSans"), local("Tahoma");
+    }
+
+    body {
+      font-family: "system";
+      margin-top: 5%;
+      margin-left: 10%;
+      margin-right: 10%;
+    }
+  </style>
+
+  <meta name="theme-color" content="#fafafa">
+</head>
+
+<body>
+
+  <script src="https://cdn.jsdelivr.net/npm/apache-arrow@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/arquero@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.1"></script>
+
+  <h2>{<a href="https://github.com/observablehq/plot">Plot</a>} + {<a href="https://github.com/uwdata/arquero">arquero</a>  } Standalone Example</h2>
+
+  <p>
+  This page live-fetches the <a href="https://www.tsa.gov/coronavirus/passenger-throughput">TSA checkpoint travel numbers (current year(s) versus prior year/same weekday)</a> 
+  web page, grabs the HTML text, turns it into a DOM, extracts the HTML <code>&lt;table&gt;</code> columns and turns them into an {arquero} table, then passes it on to {Plot}.
+  </p>
+
+  <p>
+  Each time you load/refresh the page, the live data will be retrieved. No more R, {ggplot2} & <code>cron</code> jobs for some basic, dynamic visualizations!
+  </p>
+
+  <div id="vis" class="vis">
+    <h3>TSA Total Traveler Throughput <span style='color:#E15759'>2021</span> vs <span style='color:#F28E2B'>2020</span> vs <span style='color:#4E79A7'>2019</span> (same weekday)</h3>
+  </div>
+
+  <script>
+    
+    fetch(
+    "https://observable-cors.glitch.me/https://www.tsa.gov/coronavirus/passenger-throughput",
+    {
+      cache: "no-store",
+      mode: "cors",
+      redirect: "follow"
+    }
+    )
+    .then((response) => response.text()) // we get the text here
+    .then((html) => {
+
+       var parser = new DOMParser();
+       var doc = parser.parseFromString(html, "text/html"); // we turn it into DOM elements here
+      
+       // some helpers to make the code less crufty
+       // first a function to make proper dates
+      
+       var as_date = d3.timeParse("%m/%d/%Y");
+      
+       // and, now, a little function to pull a specific <table> column and
+       // convert it to a proper numeric array. I would have put this inline
+       // if we were only converting one column but there are three of them,
+       // so it makes sense to functionize it.
+
+       var col_double = (col_num) => {
+         return Array.from(
+         doc.querySelectorAll(`table tbody tr td:nth-child(${col_num})`)
+         ).map((d) => parseFloat(d.innerText.trim().replace(/,/g, "")));
+       };
+        
+       // build an arquero table from the scraped columns
+       
+       var flights = aq
+             .table({
+                day: Array.from(
+                       doc.querySelectorAll("table tbody tr td:nth-child(1)")
+                     ).map((d) => as_date(d.innerText.trim().replace(/.{4}$/g, "2021"))),
+                y2021: col_double(2),
+                y2020: col_double(3),
+                y2019: col_double(4)
+            })
+            .orderby("day")
+         
+       document.getElementById('vis').appendChild(
+         Plot.plot({
+           marginLeft: 80,
+           x: {
+             grid: true,
+              domain: [
+              new Date("2021-01-01"),
+              flights.columnArray("day")[
+              flights.columnArray("y2021").findIndex(Number.isNaN) - 1
+              ]
+              ]
+           },
+           y: {
+             grid: true,
+             label: "# Passengers"
+           },
+           marks: [
+             Plot.line(flights, { x: "day", y: "y2019", stroke: "#4E79A7" }),
+             Plot.line(flights, { x: "day", y: "y2020", stroke: "#F28E2B" }),
+             Plot.line(flights, { x: "day", y: "y2021", stroke: "#E15759" })
+           ]
+        })
+      );
+          
+    })
+    .catch((err) => err)
+        
+  </script>
+
+</body>
+</html>
